@@ -3,15 +3,18 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\InvoiceResource\Pages;
+use App\Filament\Resources\InvoiceResource\Widgets\InvoiceStats;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Illuminate\Support\Carbon;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Livewire\Attributes\Reactive;
-use Filament\Forms\Get;
 use PhpParser\Node\Stmt\Label;
 class InvoiceResource extends Resource
 {
@@ -34,7 +37,7 @@ class InvoiceResource extends Resource
                 ->options(Product::all()->pluck('sku', 'id'))
                 ->required()
                 ->reactive()
-                ->disableOptionWhen(function ($value, $state, Get $get) {
+                ->disableOptionWhen(function ($value, $state, callable $get) {
                     // Get all invoice items from the repeater.
                     $invoiceItems = $get('../../invoiceItems');
 
@@ -65,8 +68,10 @@ class InvoiceResource extends Resource
                 ->integer()
                 ->required()
                 ->minValue(1)
-                ->live()
-                ->rules([
+                ->live(     true )
+                
+        
+                ->rules(rules: [
                     function ($get) {
                         return function (string $attribute, $value, $fail) use ($get) {
                             $itemId = $get('product_id');
@@ -83,7 +88,7 @@ class InvoiceResource extends Resource
                     $unitPrice = (float) $get('unit_price');
                     $quantity = (float) $get('quantity');
                 
-                    $set('subtotal', $unitPrice * $quantity);
+                    $set('subtotal',$unitPrice * $quantity);
                   
                 }),
                 
@@ -136,10 +141,48 @@ class InvoiceResource extends Resource
             Tables\Columns\TextColumn::make('id')->label('#') ->searchable(),
             Tables\Columns\TextColumn::make('customer_name') ->searchable(),
             Tables\Columns\TextColumn::make('invoice_date')->date(),
-            Tables\Columns\TextColumn::make('total_amount')->money('NIO'),
+            Tables\Columns\TextColumn::make('total_amount')->money('NIO')->searchable()
+            ->sortable()
+            ->summarize([
+                Tables\Columns\Summarizers\Sum::make()
+                    ->money('NIO'), 
+                    // sum Total Amount of table
+            ]),
 
         ])
-       
+        ->filters([
+          
+
+            Tables\Filters\Filter::make('created_at')
+                ->form([
+                    Forms\Components\DatePicker::make('created_from')
+                        ->placeholder(fn ($state): string => 'Dec 18, ' . now()->subYear()->format('Y')),
+                    Forms\Components\DatePicker::make('created_until')
+                        ->placeholder(fn ($state): string => now()->format('M d, Y')),
+                ])
+                ->query(function (Builder $query, array $data): Builder {
+                    return $query
+                        ->when(
+                            $data['created_from'] ?? null,
+                            fn (Builder $query, $date): Builder => $query->whereDate('created_at', '>=', $date),
+                        )
+                        ->when(
+                            $data['created_until'] ?? null,
+                            fn (Builder $query, $date): Builder => $query->whereDate('created_at', '<=', $date),
+                        );
+                })
+                ->indicateUsing(function (array $data): array {
+                    $indicators = [];
+                    if ($data['created_from'] ?? null) {
+                        $indicators['created_from'] = 'Invoice from ' . Carbon::parse($data['created_from'])->toFormattedDateString();
+                    }
+                    if ($data['created_until'] ?? null) {
+                        $indicators['created_until'] = 'Invoices until ' . Carbon::parse($data['created_until'])->toFormattedDateString();
+                    }
+
+                    return $indicators;
+                }),
+        ])
      
         ->actions([
             Tables\Actions\EditAction::make(),
@@ -152,6 +195,13 @@ class InvoiceResource extends Resource
             ]),
         ]);
       
+    }
+   
+    public static function getWidgets(): array
+    {
+        return [
+            InvoiceStats::class,
+        ];
     }
 
     public static function getPages(): array
