@@ -11,8 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->string('sku')->unique() ->after('id');
+        Schema::table('payments', function (Blueprint $table) {
+            $table->decimal('change', 10, 2);
         });
     }
 
@@ -21,8 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            //
+        Schema::table('payments', function (Blueprint $table) {
+            $table->decimal('change', 10, 2);
         });
     }
 };

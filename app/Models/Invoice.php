@@ -12,6 +12,8 @@ class Invoice extends Model
     protected $fillable = ['invoice_id','customer_name', 'invoice_date', 'total_amount'];
 
     public function invoiceItems() { return $this->hasMany(InvoiceItem::class); }
+    public function payments(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(Payment::class);
+}
 
     protected static function booted()
     {

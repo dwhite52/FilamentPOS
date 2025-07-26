@@ -1,10 +1,14 @@
 <?php
 
 namespace App\Filament\Resources;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 use App\Filament\Resources\InvoiceResource\Pages;
 use App\Filament\Resources\InvoiceResource\Widgets\InvoiceStats;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use Filament\Forms;
@@ -16,6 +20,9 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Livewire\Attributes\Reactive;
 use PhpParser\Node\Stmt\Label;
+use Filament\Notifications\Notification;
+use Filament\Forms\Components\Actions\Action;
+use Filament\Forms\Components\Fieldset;
 class InvoiceResource extends Resource
 {
     protected static ?string $model = Invoice::class;
@@ -25,11 +32,17 @@ class InvoiceResource extends Resource
 
     public static function form(Forms\Form $form): Forms\Form
     {
-        return $form
+        return $form 
         ->schema([
-            Forms\Components\TextInput::make('customer_name')->required()->default('Generic')->label('Customer Name')->translateLabel(),
-            Forms\Components\DatePicker::make('invoice_date')->required()->default(today()),
-            Forms\Components\TextInput::make('total_amount')->numeric()->disabled()->live()->reactive() ->dehydrated(),
+            Forms\Components\Section::make('Invoice')
+            ->schema([
+                Forms\Components\TextInput::make('customer_name')->required()->default('Generic')->label('Customer Name')->translateLabel(),
+                Forms\Components\DatePicker::make('invoice_date')->required()->default(today()),
+                Forms\Components\TextInput::make('total_amount')->numeric()->disabled()->live()->reactive() ->dehydrated(),
+            ])->columns(2),
+
+            Forms\Components\Section::make('Invoice Items')
+            ->schema([
             Forms\Components\HasManyRepeater::make('invoiceItems')
                 ->relationship('invoiceItems')
                 ->schema([ Forms\Components\Select::make('product_id')
@@ -114,7 +127,7 @@ class InvoiceResource extends Resource
                 ->reactive(),
         ])// the invoice items group ends here
         
-        ->columns(5)
+       
        
         ->afterStateUpdated(function ($state, $component, $get, $set) {
             // Calculate total when items change
@@ -124,9 +137,12 @@ class InvoiceResource extends Resource
             $set('total_amount',  $total);
 
           
-        }),
+        }) ->columnSpan(4)
+        ->columns(5)
+        ,
         
-
+        ])->columns(2),
+        self::getPaymentSection(),
     // Total Amount (calculated dynamically)
     
     ]);
@@ -212,7 +228,72 @@ class InvoiceResource extends Resource
             'edit' => Pages\EditInvoice::route('/{record}/edit'),
         ];
     }
-   
+  
+    protected static function getPaymentSection(): Forms\Components\Section
+{
+    return Forms\Components\Section::make('Payment')
+
+        ->schema([
+            Fieldset::make('Payment Details')
+            ->relationship('payments') // Uses the hasOne relationship
+            ->schema([
+                    // Payment fields from previous example
+                    Forms\Components\TextInput::make('amount')
+                    ->numeric()
+                    ->required()
+                    ->live(onBlur:true) 
+
+                    ->rules(rules: [
+                        function ($get) {
+                            return function (string $attribute, $state, $fail) use ($get) {
+                                $totalAmount = (float) $get('../total_amount');
+                                
+                                if ($state < $totalAmount) {
+                                    $fail("Payment Error. Please Reveiw.");
+                                }
+                            };
+                        },
+                    ])
+                    ->prefix('C$')
+                    ->afterStateUpdated(function ($state, $component, Get $get, Set $set) {
+                        // Calculate total when items change
+                        $totalAmount = (float) $get('../total_amount');
+                        $paymentAmount = (float) $state;
+                    
+                        $set('change', $paymentAmount - $totalAmount  );
+                      
+                    }),
+                Forms\Components\Select::make('type')
+                    ->options([
+                        'cash' => 'Cash',
+                        'credit_card' => 'Credit Card',
+                        'transfer' => 'Bank Transfer',
+                    ])
+                    ->required()
+                    ->default('cash'),
+
+                    Forms\Components\TextInput::make('change')
+                    ->numeric()
+                    ->required()
+                    ->disabled()
+                    ->dehydrated() 
+                    ->prefix('C$'),
+                 
+                    
+                Forms\Components\Textarea::make('details')
+            
+                    ->columnSpanFull(),
+                    ])
+                    ]);
+                    // ->visible(fn (?Invoice $record) => $record  && $record->exists);
+                        
+                       
+                    
+                  
+                   
+                    
+
+}
     // Invoice Resource Helpers
   /*   private static function getInvoiceItemSchema(): array
     {
